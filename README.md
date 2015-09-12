@@ -27,7 +27,7 @@ In [2]: geodf = gpd.read_file('datasource.shp')
 
 In [3]: from cartogram_geopandas import make_cartogram
 
-In [4]: transformed_geodf = make_cartogram(geodf, 'SIZE(MB)', 4, inplace=False)
+In [4]: transformed_geodf = make_cartogram(geodf, 'Field_to_use', 4, inplace=False)
 
 In [5]: geodf.plot()
 Out[5]: <matplotlib.axes._subplots.AxesSubplot at 0x7fa76932f470>

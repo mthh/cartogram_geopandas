@@ -5,11 +5,10 @@
     Easy construction of continuous cartogram on a Polygon/MultiPolygon
     GeoDataFrame (modify the geometry in place or create a new GeoDataFrame).
 
-    Code adapted from Carson Farmer code
-    (https://github.com/carsonfarmer/cartogram : code used in 'Cartogram' QGis
-    python plugin before some changes were made) to fit the
-    geopandas.GeoDataFrame datastructure. Carson Farmer's code is partially
-    related to 'pyCartogram.py' from Eric Wolfs.
+    Code adapted to fit the geopandas.GeoDataFrame datastructure from
+    Carson Farmer's code (https://github.com/carsonfarmer/cartogram : former
+    code in use in 'Cartogram' QGis python plugin). Carson Farmer's code is
+    partially related to 'pyCartogram.py' from Eric Wolfs.
 
     Algorithm itself based on
         { Dougenik, J. A, N. R. Chrisman, and D. R. Niemeyer. 1985.
@@ -21,12 +20,28 @@
 """
 
 import math
-from shapely.geometry import (
-    Point, LineString, MultiLineString, Polygon, MultiPolygon
-    )
+from geopandas import GeoSeries
+from shapely.geometry import LineString, MultiLineString, Polygon, MultiPolygon
 
 
 def make_cartogram(geodf, field_name, iterations=5, inplace=False):
+    """
+    Make a continuous cartogram on a geopandas.GeoDataFrame collection of
+    Polygon/MultiPolygon
+
+    :param geopandas.GeoDataFrame geodf: The GeoDataFrame containing the
+        geometry and a field to use for the transformation.
+
+    :param string field_name: The name of the field (Series) containing the
+        value to use.
+
+    :param integer iterations: The number of iterations to make.
+        [default=5]
+
+    :param bool inplace: Append in place if True is set. Otherwhise return a
+        new GeoDataFrame with transformed geometry.
+        [default=False]
+    """
     crtgm = Cartogram(geodf, field_name, iterations, inplace=inplace)
     crtgm.make()
     if not inplace:
@@ -57,7 +72,7 @@ def transform_geom(aLocal, dForceReductionFactor,
                     # Pythagorean distance
                     distance = sqrt((x0 - cx) ** 2 + (y0 - cy) ** 2)
 
-                    if (distance > lf.dRadius):
+                    if distance > lf.dRadius:
                         # Calculate the force on verteces far away
                         # from the centroid of this feature
                         Fij = lf.dMass * lf.dRadius / distance
@@ -69,7 +84,7 @@ def transform_geom(aLocal, dForceReductionFactor,
                     Fij = Fij * dForceReductionFactor / distance
                     x = (x0 - cx) * Fij + x
                     y = (y0 - cy) * Fij + y
-                line_add_pt(Point(x, y))
+                line_add_pt((x, y))
             line = LineString(line_coord)
             tmp_bound.append(line)
 
@@ -119,47 +134,49 @@ class Cartogram(object):
         self.sqrt = math.sqrt
 
     def make(self):
-        res_geom, it = self.cartogram()
-        assert it == self.iterations
+        """Fetch the result and make it available"""
+        res_geom, iterations_done = self.cartogram()
+        assert iterations_done == self.iterations
         self.geodf.set_geometry(res_geom, inplace=True)
         self.result = self.geodf
 
     def cartogram(self):
+        """
+        Compute for transformation
+        (recursively, according to the specified iteration number)
+        """
         iterations = self.iterations
         temp_geo_serie = self.geodf.geometry.copy()
         for i in range(iterations):
-            # Useless on the first iteration :
-            (aLocal, dForceReductionFactor) = self.getInfo(self.index_field[0])
-            new_geo_serie = temp_geo_serie.copy()
-
-            for fid, geom in temp_geo_serie.items():
-                newgeom = transform_geom(aLocal, dForceReductionFactor,
-                                         geom, self.total_features)
-                new_geo_serie[fid] = newgeom
+            (aLocal, dForceReductionFactor) = self.getinfo(self.index_field[0])
+            new_geo_serie = GeoSeries(
+                [transform_geom(
+                    aLocal, dForceReductionFactor, geom, self.total_features
+                    )
+                 for _, geom in temp_geo_serie.items()]
+                )
             temp_geo_serie = new_geo_serie
         return temp_geo_serie, i+1
 
-    # Gets the information required for calcualting size reduction factor
-    def getInfo(self, index):
+    def getinfo(self, index):
+        """
+        Gets the information required for calcualting size reduction factor
+        """
         sqrt = self.sqrt
         pi = self.pi
         featCount = self.total_features
         aLocal = []
-        cx = 0
-        cy = 0
         area_total = self.geodf.area.sum()
         value_total = self.geodf.iloc[:, index].sum()
         for fid, geom in self.geodf.geometry.items():
             lfeat = Holder()
             lfeat.dArea = geom.area  # save area of this feature
             lfeat.lFID = fid  # save id for this feature
-            lfeat.dValue = self.geodf.iloc[fid, index]  # save 'area' value for this feature
-            wkt_centroid = geom.centroid.wkt
-            cx, cy = wkt_centroid.replace(
-                'POINT (', ''
-                ).replace(')', '').split(' ')
-            lfeat.ptCenter_x = float(cx)  # save centroid x for this feature
-            lfeat.ptCenter_y = float(cy)  # save centroid y for this feature
+            # save weighted 'area' value for this feature :
+            lfeat.dValue = self.geodf.iloc[fid, index]
+            # save centroid coord for the feature :
+            (lfeat.ptCenter_x, lfeat.ptCenter_y) = \
+                (geom.centroid.coords.ctypes[0], geom.centroid.coords.ctypes[1])
             aLocal.append(lfeat)
 
         dFraction = area_total / value_total
@@ -169,7 +186,7 @@ class Cartogram(object):
             lf = aLocal[i]  # info for current feature
             dPolygonValue = lf.dValue
             dPolygonArea = lf.dArea
-            if (dPolygonArea < 0):  # area should never be less than zero
+            if dPolygonArea < 0:  # area should never be less than zero
                 dPolygonArea = 0
             # this is our 'desired' area...
             dDesired = dPolygonValue * dFraction
@@ -193,5 +210,4 @@ class Cartogram(object):
         dMean = dSizeErrorTotal / featCount
         # need to read up more on why this is done
         dForceReductionFactor = 1 / (dMean + 1)
-
         return (aLocal, dForceReductionFactor)

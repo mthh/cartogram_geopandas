@@ -23,6 +23,8 @@ import math
 from geopandas import GeoSeries
 from shapely.geometry import LineString, MultiLineString, Polygon, MultiPolygon
 from libc.math cimport sqrt
+from cpython cimport array
+
 
 def make_cartogram(geodf, field_name, iterations=5, inplace=False):
     """
@@ -45,15 +47,17 @@ def make_cartogram(geodf, field_name, iterations=5, inplace=False):
     crtgm = Cartogram(geodf, field_name, iterations, inplace=inplace)
     crtgm.make()
     if not inplace:
-        return crtgm.result
+        return crtgm.geodf
 
 
-def transform_geom(list aLocal, float dForceReductionFactor,
-                   geom, int featCount):
-    cdef size_t i
+cdef object transform_geom(list aLocal, float dForceReductionFactor,
+                           object geom, int featCount):
+    cdef size_t i, k
     cdef Holder lf
     cdef list new_geom, tmp_bound, line_coord
     cdef float x, y, x0, y0, cx, cy, distance, Fij, xF
+    cdef array.array xs, ys
+    cdef Py_ssize_t l_coord_bound
     
     new_geom = []
     if isinstance(geom, Polygon):
@@ -66,8 +70,11 @@ def transform_geom(list aLocal, float dForceReductionFactor,
         for single_boundary in boundarys:
             line_coord = []
 #            line_add_pt = line_coord.append
-            for x, y in zip(single_boundary.coords.xy[0],
-                            single_boundary.coords.xy[1]):
+            xs, ys = single_boundary.coords.xy
+            l_coord_bound = len(xs)
+            for k in range(l_coord_bound):
+                x = xs[k]
+                y = ys[k]
                 x0, y0 = x, y
                 # Compute the influence of all shapes on this point
                 for i in range(featCount):
@@ -90,8 +97,9 @@ def transform_geom(list aLocal, float dForceReductionFactor,
                     x = (x0 - cx) * Fij + x
                     y = (y0 - cy) * Fij + y
                 line_coord.append((x, y))
-            line = LineString(line_coord)
-            tmp_bound.append(line)
+#            line = LineString(line_coord)
+#            tmp_bound.append(line) 
+            tmp_bound.append(line_coord)
 
         if len(tmp_bound) == 1:
             poly = Polygon(tmp_bound[0])
@@ -121,9 +129,13 @@ cdef class Holder(object):
         self.dRadius = -1
 
 
-class Cartogram(object):
-    def __init__(self, geodf, field_name, int iterations, inplace=False):
-        cdef int total_features
+cdef class Cartogram(object):
+    cdef object geodf
+    cdef int iterations, index_field
+    cdef Py_ssize_t total_features
+
+    def __init__(self, object geodf, field_name, int iterations, inplace=False):
+        cdef Py_ssize_t total_features
         cdef set allowed, geom_type
 
         allowed = {'MultiPolygon', 'Polygon'}
@@ -139,7 +151,6 @@ class Cartogram(object):
         self.iterations = iterations
         self.index_field = [i for i, j in enumerate(list(self.geodf.columns))
                             if field_name in j][0]
-        self.result = None
         total_features = len(self.geodf)
         self.total_features = total_features
 
@@ -150,7 +161,6 @@ class Cartogram(object):
         res_geom, iterations_done = self.cartogram()
         assert iterations_done == self.iterations
         self.geodf.set_geometry(res_geom, inplace=True)
-        self.result = self.geodf
 
     def cartogram(self):
         """
@@ -168,11 +178,11 @@ class Cartogram(object):
 
         for ite in range(iterations):
             (aLocal, dForceReductionFactor) = self.getinfo(self.index_field)
+
             for nbi in range(total_features):
                 temp_geo_serie[nbi] = transform_geom(
                     aLocal, dForceReductionFactor,temp_geo_serie[nbi], total_features
                     )
-#            temp_geo_serie = new_geo_serie
         ite += 1
         return temp_geo_serie, ite
 
@@ -180,18 +190,20 @@ class Cartogram(object):
         """
         Gets the information required for calcualting size reduction factor
         """
-        cdef int featCount, fid, i
+        cdef int fid=0, i
         cdef float dPolygonValue, dPolygonArea, dFraction, dDesired, dRadius
         cdef float dSizeError=0, dSizeErrorTotal=0, dForceReductionFactor, dMean
         cdef float area_total, value_total, tmp
         cdef list aLocal
         cdef Holder lfeat, lf
+        cdef Py_ssize_t featCount
 
         featCount = self.total_features
         aLocal = []
-        area_total = self.geodf.area.sum()
-        value_total = self.geodf.iloc[:, index].sum()
-        for fid, geom in self.geodf.geometry.items():
+        area_total = sum(self.geodf.area)
+        value_total = sum(self.geodf.iloc[:, index])
+        for fid in range(featCount):
+            geom = self.geodf.geometry[fid]
             lfeat = Holder()
             lfeat.dArea = geom.area  # save area of this feature
             lfeat.lFID = fid  # save id for this feature

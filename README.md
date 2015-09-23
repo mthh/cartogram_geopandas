@@ -1,7 +1,7 @@
 # cartogram_geopandas
-v0.0.0b
+v0.0.0c
 
-Easy construction of continuous cartogram on a Polygon/MultiPolygon GeoDataFrame (modify the geometry in place or create a new GeoDataFrame).
+Fast and convenient creation of continuous cartogram on a Polygon/MultiPolygon GeoDataFrame (modify the geometry in place or create a new GeoDataFrame).
 
 Code adapted from Carson Farmer code *(https://github.com/carsonfarmer/cartogram : former code used in 'Cartogram' QGis python plugin)* to fit the geopandas.**GeoDataFrame** datastructure.  
 Carson Farmer's code is partially related to 'pyCartogram.py' from Eric Wolfs.  
@@ -9,6 +9,10 @@ Algorithm itself based on :
 ```Dougenik, J. A, N. R. Chrisman, and D. R. Niemeyer. 1985. "An algorithm to construct continuous cartograms." Professional Geographer 37:75-81```  
 
 Early stage of developement / mainly untested. No warranty of any kind concerning the result.  
+
+Requierments
+------------
+* Cython
 
 Installation
 ------------
@@ -27,13 +31,13 @@ In [2]: geodf = gpd.read_file('datasource.shp')
 
 In [3]: from cartogram_geopandas import make_cartogram
 
-In [4]: transformed_geodf = make_cartogram(geodf, 'Field_to_use', 4, inplace=False)
+In [4]: transformed_geodf = make_cartogram(geodf, 'Field_to_use', 4, inplace=False)  # 4 for the number of iterations
 
 In [5]: geodf.plot()
 Out[5]: <matplotlib.axes._subplots.AxesSubplot at 0x7fa76932f470>
 ```
 ![Input](misc/input.png)
-```
+```python
 In [6]: transformed_geodf.plot()
 Out[6]: <matplotlib.axes._subplots.AxesSubplot at 0x7fa7478dba90>
 ```

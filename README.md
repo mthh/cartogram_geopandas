@@ -10,7 +10,7 @@ Algorithm itself based on :
 
 Early stage of developement / mainly untested. No warranty of any kind concerning the result.  
 
-Requierments
+Requirements
 ------------
 * Cython
 
@@ -31,7 +31,7 @@ In [2]: geodf = gpd.read_file('datasource.shp')
 
 In [3]: from cartogram_geopandas import make_cartogram
 
-In [4]: transformed_geodf = make_cartogram(geodf, 'Field_to_use', 4, inplace=False)  # 4 for the number of iterations
+In [4]: transformed_geodf = make_cartogram(geodf, 'Field_to_use', 4, inplace=False)  # 4 = number of iterations
 
 In [5]: geodf.plot()
 Out[5]: <matplotlib.axes._subplots.AxesSubplot at 0x7fa76932f470>
